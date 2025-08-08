@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(0, 0%, 100%);
+  --foreground: hsl(20, 14.3%, 4.1%);
+  --muted: hsl(60, 4.8%, 95.9%);
+  --muted-foreground: hsl(25, 5.3%, 44.7%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(20, 14.3%, 4.1%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(20, 14.3%, 4.1%);
+  --border: hsl(20, 5.9%, 90%);
+  --input: hsl(20, 5.9%, 90%);
+  --primary: hsl(207, 90%, 54%);
+  --primary-foreground: hsl(211, 100%, 99%);
+  --secondary: hsl(60, 4.8%, 95.9%);
+  --secondary-foreground: hsl(24, 9.8%, 10%);
+  --accent: hsl(60, 4.8%, 95.9%);
+  --accent-foreground: hsl(24, 9.8%, 10%);
+  --destructive: hsl(0, 84.2%, 60.2%);
+  --destructive-foreground: hsl(60, 9.1%, 97.8%);
+  --ring: hsl(20, 14.3%, 4.1%);
+  --radius: 0.5rem;
+
+  /* Brand colors */
+  --brand-primary: hsl(213, 50%, 31%);
+  --brand-primary-light: hsl(200, 76%, 64%);
+  --brand-secondary: hsl(59, 70%, 60%);
+  --brand-secondary-alt: hsl(300, 50%, 30%);
+  --brand-primary-dark: hsl(213, 56%, 22%);
+  --brand-primary-lighter: hsl(200, 86%, 72%);
+  --brand-secondary-dark: hsl(59, 49%, 49%);
+  --brand-secondary-alt-light: hsl(307, 65%, 42%);
+}
+
+/* Gantt Chart Styles */
+.gantt-bar {
+  position: absolute;
+  user-select: none;
+}
+
+.week-grid {
+  position: relative;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+
+.dark {
+  --background: hsl(240, 10%, 3.9%);
+  --foreground: hsl(0, 0%, 98%);
+  --muted: hsl(240, 3.7%, 15.9%);
+  --muted-foreground: hsl(240, 5%, 64.9%);
+  --popover: hsl(240, 10%, 3.9%);
+  --popover-foreground: hsl(0, 0%, 98%);
+  --card: hsl(240, 10%, 3.9%);
+  --card-foreground: hsl(0, 0%, 98%);
+  --border: hsl(240, 3.7%, 15.9%);
+  --input: hsl(240, 3.7%, 15.9%);
+  --primary: hsl(207, 90%, 54%);
+  --primary-foreground: hsl(211, 100%, 99%);
+  --secondary: hsl(240, 3.7%, 15.9%);
+  --secondary-foreground: hsl(0, 0%, 98%);
+  --accent: hsl(240, 3.7%, 15.9%);
+  --accent-foreground: hsl(0, 0%, 98%);
+  --destructive: hsl(0, 62.8%, 30.6%);
+  --destructive-foreground: hsl(0, 0%, 98%);
+  --ring: hsl(240, 4.9%, 83.9%);
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+}
+
+@layer components {
+  .gantt-bar {
+    @apply cursor-move transition-all duration-200 relative;
+  }
+  
+  .gantt-bar:hover {
+    @apply -translate-y-0.5 shadow-lg;
+  }
+  
+  .gantt-bar.dragging {
+    @apply z-50 scale-[1.02] shadow-2xl;
+  }
+  
+  .resize-handle {
+    @apply absolute top-0 bottom-0 w-2 cursor-col-resize opacity-0 transition-opacity duration-200;
+  }
+  
+  .resize-handle.left {
+    @apply -left-1 border-l-2 border-white;
+  }
+  
+  .resize-handle.right {
+    @apply -right-1 border-r-2 border-white;
+  }
+  
+  .gantt-bar:hover .resize-handle {
+    @apply opacity-100;
+  }
+  
+  .week-grid {
+    background-image: linear-gradient(to right, #d1d5db 1px, transparent 1px);
+    background-size: 60px 100%;
+  }
+  
+  .snap-indicator {
+    @apply absolute top-0 bottom-0 w-0.5 bg-blue-500 opacity-0 transition-opacity duration-200 z-40;
+  }
+  
+  .snap-indicator.active {
+    @apply opacity-100;
+  }
+  
+  .customized-bar {
+    @apply border-2 border-dashed border-red-500;
+    background: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 2px,
+      hsl(0, 84.2%, 60.2%, 0.1) 2px,
+      hsl(0, 84.2%, 60.2%, 0.1) 4px
+    );
+  }
+  
+  .original-duration-indicator {
+    @apply absolute -top-0.5 h-0.5 bg-gray-500 opacity-50;
+  }
+}
+
+@media print {
+  @page {
+    size: 11in 8.5in landscape;
+    margin: 0.5in;
+  }
+  
+  .no-print { 
+    display: none !important; 
+  }
+  
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+  
+  .gantt-container {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  
+  .gantt-bar {
+    box-shadow: none !important;
+    transform: none !important;
+  }
+  
+  .resize-handle {
+    display: none !important;
+  }
+  
+  .customized-bar {
+    border-style: solid !important;
+  }
+}
