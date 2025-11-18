@@ -7,7 +7,7 @@ import { Slider } from '@/components/ui/slider';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Download, Calendar as CalendarIcon, RotateCcw, GripVertical } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, addWeeks } from 'date-fns';
 import { cn } from "@/lib/utils";
 import clearCompanyLogo from '@assets/ClearCompany_Main_RGB_1752703162426.png';
 
@@ -28,7 +28,7 @@ interface Task {
   duration: number;
   color: string;
   isCustomized?: boolean;
-  originalDuration: number; // Required for workload calculation
+  originalDuration: number;
   originalStart?: number;
   isSelfPaced?: boolean;
   selfPacedLabel?: string;
@@ -180,13 +180,12 @@ export default function GanttChart({
     });
   }, [employeeCount]);
 
-  // Generate timeline
+  // Generate timeline (Base Logic)
   const generateTimeline = useCallback(() => {
     const selectedProductInfo = productMixes[selectedProduct as keyof typeof productMixes];
     const modules = selectedProductInfo.modules;
     const hasIntegration = selectedProductInfo.hasIntegration;
     
-    // For ClearCare Pro (self-paced)
     if (tierInfo.package === 'ClearCare Pro') {
       let tasks: Task[] = [];
       tasks.push({
@@ -200,12 +199,10 @@ export default function GanttChart({
         isSelfPaced: false
       });
       
-      // ... (Rest of self-paced logic kept simplified for brevity, usually handled as full width bars)
-      // For the interactive part, we focus primarily on the calculated timeline below
+      // Simplified self-paced structure
       return tasks;
     }
     
-    // For Standard Implementation
     let tasks: Task[] = [];
     let currentWeek = 0;
     let moduleDuration = tierInfo.weeksPerModule;
@@ -242,8 +239,10 @@ export default function GanttChart({
     
     for (let i = 0; i < modules.length; i++) {
       const moduleName = modules[i];
-      if (i > 0) currentWeek -= 1; // Overlap
+      if (i > 0) currentWeek -= 1; 
       
+      const modStart = currentWeek;
+
       tasks.push({
         id: `${moduleName}-implementation`,
         name: `${moduleName} Implementation`,
@@ -362,6 +361,13 @@ export default function GanttChart({
     return tasks;
   }, [employeeCount, selectedProduct, tierInfo, colors]);
 
+  // Calculate Standard Total Weeks (Baseline)
+  const standardTotalWeeks = useMemo(() => {
+    const standardTasks = generateTimeline();
+    if (standardTasks.length === 0) return 0;
+    return Math.max(...standardTasks.map(t => t.start + t.duration));
+  }, [generateTimeline]);
+
   // Initial load and reset
   useEffect(() => {
     if (!isCustomMode) {
@@ -371,18 +377,23 @@ export default function GanttChart({
 
   const totalWeeks = useMemo(() => {
     if (tasks.length === 0) return 0;
-    // Add buffer for drag operations
     return Math.max(20, Math.ceil(Math.max(...tasks.map(task => task.start + task.duration)) + 2));
+  }, [tasks]);
+
+  // Current active timeline duration
+  const currentDurationWeeks = useMemo(() => {
+    if (tasks.length === 0) return 0;
+    return Math.ceil(Math.max(...tasks.map(task => task.start + task.duration)));
   }, [tasks]);
 
   // --- Interaction Handlers ---
 
   const handleMouseDown = (e: React.MouseEvent, task: Task, type: 'move' | 'resize') => {
-    if (task.isSelfPaced) return; // Disable dragging for self-paced placeholder bars
+    if (task.isSelfPaced) return;
     
     e.preventDefault();
     e.stopPropagation();
-    setIsCustomMode(true); // Switch to custom mode so auto-generation stops overwriting
+    setIsCustomMode(true);
     setDragState({
       taskId: task.id,
       type,
@@ -397,12 +408,8 @@ export default function GanttChart({
       if (!dragState) return;
 
       const containerWidth = ganttContainerRef.current?.offsetWidth || 1000;
-      const nameColumnWidth = 256; // w-64 is 16rem = 256px
+      const nameColumnWidth = 256; 
       const chartWidth = containerWidth - nameColumnWidth;
-      // Determine pixels per week. Total weeks logic ensures we have space.
-      // In the render, we use percentages. 
-      // 100% width = totalWeeks. 
-      // So 1 week = chartWidth / totalWeeks pixels.
       const pxPerWeek = chartWidth / Math.max(30, totalWeeks * 1.2);
 
       const deltaX = e.clientX - dragState.startX;
@@ -412,12 +419,14 @@ export default function GanttChart({
         if (t.id !== dragState.taskId) return t;
 
         if (dragState.type === 'move') {
-          // Move: Change start, keep duration
-          const newStart = Math.max(0, dragState.initialStart + deltaWeeks);
+          // Snap to nearest whole number
+          const rawNewStart = dragState.initialStart + deltaWeeks;
+          const newStart = Math.max(0, Math.round(rawNewStart));
           return { ...t, start: newStart, isCustomized: true };
         } else {
-          // Resize: Change duration, keep start
-          const newDuration = Math.max(1, dragState.initialDuration + deltaWeeks);
+          // Snap to nearest whole number, min 1 week
+          const rawNewDuration = dragState.initialDuration + deltaWeeks;
+          const newDuration = Math.max(1, Math.round(rawNewDuration));
           return { ...t, duration: newDuration, isCustomized: true };
         }
       }));
@@ -438,42 +447,36 @@ export default function GanttChart({
     };
   }, [dragState, totalWeeks]);
 
-  // --- Workload / Velocity Calculation ---
+  // --- Implementation Effort Calculation ---
   
-  const weeklyWorkload = useMemo(() => {
-    const workload: number[] = new Array(Math.ceil(totalWeeks)).fill(0);
+  const weeklyEffort = useMemo(() => {
+    const effort: number[] = new Array(Math.ceil(totalWeeks)).fill(0);
     
     tasks.forEach(task => {
       if (task.isSelfPaced) return;
 
-      // Calculate Intensity Multiplier
-      // If a task was 5 weeks and is now 2.5 weeks, intensity is 2.0 (Double the work per week)
+      // Intensity = Original Duration / Current Duration.
+      // Standard task = 1.0. Compressed = >1.0. Lengthened = <1.0.
       const intensity = task.originalDuration / task.duration;
       
-      // Distribute this intensity across the active weeks
       for (let w = Math.floor(task.start); w < task.start + task.duration; w++) {
-        if (w >= 0 && w < workload.length) {
-          // We add overlapping portions. Simple box integration.
-          // If a task starts at 1.5 and ends at 2.5, week 1 gets 0.5 intensity, week 2 gets 0.5.
-          // For simplicity in this UI, we'll just add the full intensity to the integer weeks it touches 
-          // or use a simplified center-point logic.
-          // Let's use simplified: Add intensity to every integer week covered.
-          workload[w] += intensity;
+        if (w >= 0 && w < effort.length) {
+          effort[w] += intensity;
         }
       }
     });
     
-    setMaxWorkload(Math.max(...workload, 1));
-    return workload;
+    // Set baseline for "Standard" effort. 
+    // Usually, 2 parallel streams is normal (Setup + Learning overlap).
+    // So standard is around 2.0 - 3.0 cumulative intensity.
+    setMaxWorkload(Math.max(...effort, 1));
+    return effort;
   }, [tasks, totalWeeks]);
 
-  const getWorkloadColor = (score: number) => {
-    // Base normalization around 2.5 concurrent streams being "High"
-    const normalized = score / 3.5; 
-    if (normalized < 0.3) return '#4ade80'; // Green
-    if (normalized < 0.6) return '#facc15'; // Yellow
-    if (normalized < 0.8) return '#fb923c'; // Orange
-    return '#ef4444'; // Red
+  const getEffortColor = (score: number) => {
+    if (score < 2.0) return '#4ade80'; // Low/Green (Lengthened or sparse)
+    if (score <= 3.5) return '#facc15'; // Standard/Yellow (Normal overlap)
+    return '#ef4444'; // High/Red (Compressed/Heavy overlap)
   };
 
   const resetCustomizations = () => {
@@ -483,7 +486,6 @@ export default function GanttChart({
 
   const exportPDF = () => window.print();
 
-  // Group tasks
   const tasksByPhase = useMemo(() => {
     const phases: Record<string, Task[]> = {};
     tasks.forEach(task => {
@@ -493,10 +495,23 @@ export default function GanttChart({
     return phases;
   }, [tasks]);
 
-  const totalWeeksDisplay = tierInfo.package === 'ClearCare Pro' ? 'Client Self Paced' : Math.ceil(totalWeeks);
+  // Status Logic
+  const getTimelineStatus = () => {
+    if (!isCustomMode) return "Standard Timeline";
+    if (currentDurationWeeks < standardTotalWeeks) return "Customized Expedited";
+    if (currentDurationWeeks > standardTotalWeeks) return "Customized Lengthened";
+    return "Customized";
+  };
+
+  const getTimelineStatusColor = () => {
+    if (!isCustomMode) return "text-slate-600";
+    if (currentDurationWeeks < standardTotalWeeks) return "text-orange-600";
+    if (currentDurationWeeks > standardTotalWeeks) return "text-blue-600";
+    return "text-slate-600";
+  };
 
   return (
-    <div className="space-y-8 select-none"> {/* Prevent text selection while dragging */}
+    <div className="space-y-8 select-none">
       <div className="flex justify-center w-full mb-6">
         <img src={clearCompanyLogo} alt="ClearCompany Logo" className="h-16 object-contain" />
       </div>
@@ -537,6 +552,7 @@ export default function GanttChart({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+               {/* Product */}
                <div className="bg-slate-50 p-3 rounded border">
                  <Label className="text-xs text-slate-500">Product</Label>
                  <select 
@@ -547,26 +563,56 @@ export default function GanttChart({
                     {Object.keys(productMixes).map(p => <option key={p} value={p}>{p}</option>)}
                  </select>
                </div>
+
+               {/* Est Start Date */}
                <div className="bg-slate-50 p-3 rounded border">
-                 <Label className="text-xs text-slate-500">Package Tier</Label>
-                 <div className="font-medium mt-1">{tierInfo.package}</div>
+                 <Label className="text-xs text-slate-500">Est. Start Date</Label>
+                 <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start text-left font-medium p-0 h-auto mt-1 hover:bg-transparent"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4 opacity-50" />
+                      {estimatedStartDate ? format(estimatedStartDate, "MMM dd, yyyy") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={estimatedStartDate}
+                      onSelect={setEstimatedStartDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
                </div>
+
+               {/* Est End Date */}
                <div className="bg-slate-50 p-3 rounded border">
                  <Label className="text-xs text-slate-500">Est. End Date</Label>
-                 <div className="font-medium mt-1">
-                    {estimatedStartDate && typeof totalWeeksDisplay === 'number' ? format(new Date(new Date(estimatedStartDate).setDate(estimatedStartDate.getDate() + (totalWeeksDisplay * 7))), "MMM dd, yyyy") : "N/A"}
+                 <div className="mt-1">
+                   <div className="font-medium">
+                      {estimatedStartDate ? 
+                        format(addWeeks(estimatedStartDate, currentDurationWeeks), "MMM dd, yyyy") 
+                        : "N/A"
+                      }
+                   </div>
+                   {isCustomMode && (
+                     <div className={cn("text-xs font-bold mt-1", getTimelineStatusColor())}>
+                       {getTimelineStatus()}
+                     </div>
+                   )}
                  </div>
                </div>
             </div>
 
-            {/* Velocity Meter Explanation */}
             {isCustomMode && (
-              <div className="bg-orange-50 border border-orange-200 rounded-md p-3 text-sm text-orange-800 flex items-start gap-2 animate-in fade-in">
-                <div className="mt-0.5">⚠️</div>
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800 flex items-start gap-2 animate-in fade-in">
+                <div className="mt-0.5">ℹ️</div>
                 <div>
-                  <strong>Custom Mode Active:</strong> You are manually adjusting timelines. 
-                  Compressing tasks or running them concurrently increases implementation intensity. 
-                  Check the "Implementation Velocity" heat map below the chart.
+                  <strong>Custom Mode Active:</strong> Task blocks are snapped to whole weeks. 
+                  Check the "Implementation Effort" meter below to ensure workload remains feasible.
                 </div>
               </div>
             )}
@@ -579,8 +625,8 @@ export default function GanttChart({
         <CardHeader style={{ backgroundColor: colors.primary, color: 'white' }} className="py-3">
           <div className="flex justify-between items-center">
             <CardTitle className="text-lg">Timeline: {companyName}</CardTitle>
-            <div className="text-sm opacity-80">
-              {typeof totalWeeksDisplay === 'number' ? `${Math.ceil(totalWeeksDisplay)} Weeks` : totalWeeksDisplay}
+            <div className="text-sm opacity-80 font-mono">
+               Total: {currentDurationWeeks} Weeks
             </div>
           </div>
         </CardHeader>
@@ -623,11 +669,16 @@ export default function GanttChart({
                 <div key={task.id} className="flex border-b border-gray-100 hover:bg-gray-50/50 transition-colors group">
                   <div className="w-64 shrink-0 p-3 border-r border-gray-200 text-sm flex flex-col justify-center">
                     <div className="font-medium leading-tight">{task.name}</div>
-                    {task.isCustomized && <span className="text-[10px] text-orange-500 font-medium">Customized</span>}
+                    {task.duration < task.originalDuration && (
+                      <span className="text-[10px] text-orange-600 font-bold uppercase mt-1">Expedited</span>
+                    )}
+                    {task.duration > task.originalDuration && (
+                      <span className="text-[10px] text-blue-600 font-bold uppercase mt-1">Lengthened</span>
+                    )}
                   </div>
 
                   <div className="flex-1 relative h-12">
-                    {/* Week grid lines background for row */}
+                    {/* Grid Lines */}
                     <div className="absolute inset-0 w-full h-full pointer-events-none">
                         {Array.from({ length: Math.ceil(totalWeeks) }).map((_, i) => (
                           <div 
@@ -659,12 +710,10 @@ export default function GanttChart({
                         }}
                         onMouseDown={(e) => handleMouseDown(e, task, 'move')}
                       >
-                        <span className="truncate drop-shadow-md">{task.duration.toFixed(1)}w</span>
+                        <span className="truncate drop-shadow-md">{task.duration}w</span>
                         
-                        {/* Drag Handle Icon (visual only) */}
                         <GripVertical className="w-3 h-3 opacity-50 mx-auto absolute left-1/2 -translate-x-1/2 pointer-events-none" />
 
-                        {/* Resize Handle */}
                         <div 
                           className="absolute right-0 top-0 bottom-0 w-4 hover:bg-white/20 cursor-ew-resize flex items-center justify-center"
                           onMouseDown={(e) => handleMouseDown(e, task, 'resize')}
@@ -679,15 +728,15 @@ export default function GanttChart({
             </div>
           ))}
 
-          {/* Workload Heatmap */}
+          {/* Implementation Effort Heatmap */}
           {tierInfo.package !== 'ClearCare Pro' && (
             <div className="flex border-t-2 border-gray-200 mt-4 bg-gray-50">
               <div className="w-64 shrink-0 p-3 border-r border-gray-200 text-sm font-bold text-gray-700 flex flex-col justify-center">
-                Implementation Velocity
-                <span className="text-[10px] font-normal text-gray-500">Est. Intensity / Workload</span>
+                Implementation Effort
+                <span className="text-[10px] font-normal text-gray-500">Workload Intensity</span>
               </div>
               <div className="flex-1 relative h-16 flex items-end pb-0">
-                 {weeklyWorkload.map((load, i) => (
+                 {weeklyEffort.map((load, i) => (
                    <div 
                      key={i}
                      className="absolute bottom-0 border-r border-white transition-all duration-300 group"
@@ -699,28 +748,22 @@ export default function GanttChart({
                        alignItems: 'flex-end'
                      }}
                    >
-                      {/* The Heatmap Bar */}
                       <div 
                         className="w-full rounded-t-sm transition-all hover:brightness-90"
                         style={{ 
-                          height: `${Math.min(100, (load / 3.5) * 100)}%`,
-                          backgroundColor: getWorkloadColor(load),
+                          // Scale height max to 4.0 intensity for visual
+                          height: `${Math.min(100, (load / 4) * 100)}%`,
+                          backgroundColor: getEffortColor(load),
                           opacity: 0.8
                         }}
                       />
-                      
-                      {/* Tooltip for score */}
-                      <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] px-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50">
-                         Score: {load.toFixed(1)}
-                      </div>
                    </div>
                  ))}
                  
-                 {/* Legend for Heatmap overlay */}
                  <div className="absolute top-1 right-2 flex gap-3 text-[10px] bg-white/80 p-1 rounded backdrop-blur-sm border border-gray-200">
-                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#4ade80]"></div> Normal</div>
-                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#facc15]"></div> Elevated</div>
-                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#ef4444]"></div> Intense</div>
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#4ade80]"></div> Low (Lengthened)</div>
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#facc15]"></div> Standard</div>
+                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#ef4444]"></div> High (Expedited)</div>
                  </div>
               </div>
             </div>
