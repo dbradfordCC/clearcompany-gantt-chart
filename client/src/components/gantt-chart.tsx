@@ -44,7 +44,7 @@ interface TierInfo {
 
 interface DragState {
   taskId: string;
-  type: 'move' | 'resize';
+  type: 'move' | 'resize-left' | 'resize-right';
   startX: number;
   initialStart: number;
   initialDuration: number;
@@ -199,7 +199,6 @@ export default function GanttChart({
         isSelfPaced: false
       });
       
-      // Simplified self-paced structure
       return tasks;
     }
     
@@ -241,8 +240,6 @@ export default function GanttChart({
       const moduleName = modules[i];
       if (i > 0) currentWeek -= 1; 
       
-      const modStart = currentWeek;
-
       tasks.push({
         id: `${moduleName}-implementation`,
         name: `${moduleName} Implementation`,
@@ -377,7 +374,10 @@ export default function GanttChart({
 
   const totalWeeks = useMemo(() => {
     if (tasks.length === 0) return 0;
-    return Math.max(20, Math.ceil(Math.max(...tasks.map(task => task.start + task.duration)) + 2));
+    // Calculate width with a small buffer, but prevent it from being too wide if tasks are short
+    const maxTaskEnd = Math.max(...tasks.map(task => task.start + task.duration));
+    // Ensure minimum of 12 weeks for display, add 2 week buffer
+    return Math.max(12, Math.ceil(maxTaskEnd) + 2);
   }, [tasks]);
 
   // Current active timeline duration
@@ -388,7 +388,7 @@ export default function GanttChart({
 
   // --- Interaction Handlers ---
 
-  const handleMouseDown = (e: React.MouseEvent, task: Task, type: 'move' | 'resize') => {
+  const handleMouseDown = (e: React.MouseEvent, task: Task, type: 'move' | 'resize-left' | 'resize-right') => {
     if (task.isSelfPaced) return;
     
     e.preventDefault();
@@ -410,7 +410,8 @@ export default function GanttChart({
       const containerWidth = ganttContainerRef.current?.offsetWidth || 1000;
       const nameColumnWidth = 256; 
       const chartWidth = containerWidth - nameColumnWidth;
-      const pxPerWeek = chartWidth / Math.max(30, totalWeeks * 1.2);
+      // Dynamic pxPerWeek based on totalWeeks to allow scaling
+      const pxPerWeek = chartWidth / totalWeeks;
 
       const deltaX = e.clientX - dragState.startX;
       const deltaWeeks = deltaX / pxPerWeek;
@@ -419,15 +420,27 @@ export default function GanttChart({
         if (t.id !== dragState.taskId) return t;
 
         if (dragState.type === 'move') {
-          // Snap to nearest whole number
+          // Move: Change start, maintain duration
           const rawNewStart = dragState.initialStart + deltaWeeks;
           const newStart = Math.max(0, Math.round(rawNewStart));
           return { ...t, start: newStart, isCustomized: true };
-        } else {
-          // Snap to nearest whole number, min 1 week
+        } else if (dragState.type === 'resize-right') {
+          // Resize Right: Change duration, maintain start
           const rawNewDuration = dragState.initialDuration + deltaWeeks;
           const newDuration = Math.max(1, Math.round(rawNewDuration));
           return { ...t, duration: newDuration, isCustomized: true };
+        } else {
+          // Resize Left: Change Start AND Duration to keep End fixed
+          const rawNewStart = dragState.initialStart + deltaWeeks;
+          const newStart = Math.max(0, Math.round(rawNewStart));
+          
+          // Max start cannot exceed original end minus 1 week (min duration 1)
+          const originalEnd = dragState.initialStart + dragState.initialDuration;
+          const clampedStart = Math.min(newStart, originalEnd - 1);
+          
+          const newDuration = originalEnd - clampedStart;
+          
+          return { ...t, start: clampedStart, duration: newDuration, isCustomized: true };
         }
       }));
     };
@@ -455,8 +468,6 @@ export default function GanttChart({
     tasks.forEach(task => {
       if (task.isSelfPaced) return;
 
-      // Intensity = Original Duration / Current Duration.
-      // Standard task = 1.0. Compressed = >1.0. Lengthened = <1.0.
       const intensity = task.originalDuration / task.duration;
       
       for (let w = Math.floor(task.start); w < task.start + task.duration; w++) {
@@ -466,17 +477,14 @@ export default function GanttChart({
       }
     });
     
-    // Set baseline for "Standard" effort. 
-    // Usually, 2 parallel streams is normal (Setup + Learning overlap).
-    // So standard is around 2.0 - 3.0 cumulative intensity.
     setMaxWorkload(Math.max(...effort, 1));
     return effort;
   }, [tasks, totalWeeks]);
 
   const getEffortColor = (score: number) => {
-    if (score < 2.0) return '#4ade80'; // Low/Green (Lengthened or sparse)
-    if (score <= 3.5) return '#facc15'; // Standard/Yellow (Normal overlap)
-    return '#ef4444'; // High/Red (Compressed/Heavy overlap)
+    if (score < 2.0) return '#4ade80'; // Low
+    if (score <= 3.5) return '#facc15'; // Standard
+    return '#ef4444'; // High
   };
 
   const resetCustomizations = () => {
@@ -512,23 +520,38 @@ export default function GanttChart({
 
   return (
     <div className="space-y-8 select-none">
+      {/* Print specific styles injected here to ensure robust printing */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @media print {
+          @page { size: landscape; margin: 5mm; }
+          body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .no-print { display: none !important; }
+          .gantt-container { overflow: visible !important; width: 100% !important; box-shadow: none !important; border: none !important; }
+          /* Ensure the chart fits horizontally */
+          .w-64 { width: 180px !important; } /* Shrink sidebar slightly for print */
+          .text-[10px] { font-size: 8px !important; } /* Smaller text for print */
+          /* Fix for cut-off blocks */
+          .flex-1 { overflow: visible !important; }
+        }
+      `}} />
+
       <div className="flex justify-center w-full mb-6">
         <img src={clearCompanyLogo} alt="ClearCompany Logo" className="h-16 object-contain" />
       </div>
 
       {/* Config Panel */}
-      <Card>
+      <Card className="no-print">
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle style={{ color: colors.primary }}>Implementation Project Configuration</CardTitle>
             <div className="flex gap-2">
               {isCustomMode && (
-                 <Button variant="outline" onClick={resetCustomizations} className="no-print text-orange-600 border-orange-200 hover:bg-orange-50">
+                 <Button variant="outline" onClick={resetCustomizations} className="text-orange-600 border-orange-200 hover:bg-orange-50">
                    <RotateCcw className="w-4 h-4 mr-2" />
                    Reset Timeline
                  </Button>
               )}
-              <Button onClick={exportPDF} className="no-print" style={{ backgroundColor: colors.primary }}>
+              <Button onClick={exportPDF} style={{ backgroundColor: colors.primary }}>
                 <Download className="w-4 h-4 mr-2" />
                 Export PDF
               </Button>
@@ -611,7 +634,7 @@ export default function GanttChart({
               <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800 flex items-start gap-2 animate-in fade-in">
                 <div className="mt-0.5">ℹ️</div>
                 <div>
-                  <strong>Custom Mode Active:</strong> Task blocks are snapped to whole weeks. 
+                  <strong>Implementation Timeline has been customized:</strong> Task blocks are snapped to whole weeks. 
                   Check the "Implementation Effort" meter below to ensure workload remains feasible.
                 </div>
               </div>
@@ -641,8 +664,8 @@ export default function GanttChart({
                    key={i} 
                    className="absolute bottom-0 top-0 border-r border-gray-200 text-[10px] text-gray-400 flex items-end justify-center pb-1"
                    style={{ 
-                     left: `${(i / Math.max(30, totalWeeks * 1.2)) * 100}%`, 
-                     width: `${(1 / Math.max(30, totalWeeks * 1.2)) * 100}%` 
+                     left: `${(i / totalWeeks) * 100}%`, 
+                     width: `${(1 / totalWeeks) * 100}%` 
                    }}
                  >
                    {i + 1}
@@ -684,7 +707,7 @@ export default function GanttChart({
                           <div 
                             key={i} 
                             className="absolute top-0 bottom-0 border-r border-gray-100"
-                            style={{ left: `${(i / Math.max(30, totalWeeks * 1.2)) * 100}%` }}
+                            style={{ left: `${(i / totalWeeks) * 100}%` }}
                           />
                         ))}
                     </div>
@@ -704,19 +727,28 @@ export default function GanttChart({
                         )}
                         style={{
                           backgroundColor: task.color,
-                          left: `${(task.start / Math.max(30, totalWeeks * 1.2)) * 100}%`,
-                          width: `${Math.max(0.5, (task.duration / Math.max(30, totalWeeks * 1.2)) * 100)}%`,
+                          left: `${(task.start / totalWeeks) * 100}%`,
+                          width: `${Math.max(0.5, (task.duration / totalWeeks) * 100)}%`,
                           cursor: 'grab'
                         }}
                         onMouseDown={(e) => handleMouseDown(e, task, 'move')}
                       >
-                        <span className="truncate drop-shadow-md">{task.duration}w</span>
+                        <span className="truncate drop-shadow-md select-none">{task.duration}w</span>
                         
+                        {/* Left Resize Handle */}
+                        <div 
+                          className="absolute left-0 top-0 bottom-0 w-4 hover:bg-white/20 cursor-ew-resize flex items-center justify-center z-20"
+                          onMouseDown={(e) => handleMouseDown(e, task, 'resize-left')}
+                        >
+                          <div className="w-0.5 h-3 bg-white/50 rounded-full" />
+                        </div>
+
                         <GripVertical className="w-3 h-3 opacity-50 mx-auto absolute left-1/2 -translate-x-1/2 pointer-events-none" />
 
+                        {/* Right Resize Handle */}
                         <div 
-                          className="absolute right-0 top-0 bottom-0 w-4 hover:bg-white/20 cursor-ew-resize flex items-center justify-center"
-                          onMouseDown={(e) => handleMouseDown(e, task, 'resize')}
+                          className="absolute right-0 top-0 bottom-0 w-4 hover:bg-white/20 cursor-ew-resize flex items-center justify-center z-20"
+                          onMouseDown={(e) => handleMouseDown(e, task, 'resize-right')}
                         >
                           <div className="w-0.5 h-3 bg-white/50 rounded-full" />
                         </div>
@@ -730,20 +762,36 @@ export default function GanttChart({
 
           {/* Implementation Effort Heatmap */}
           {tierInfo.package !== 'ClearCare Pro' && (
-            <div className="flex border-t-2 border-gray-200 mt-4 bg-gray-50">
+            <div className="flex border-t-2 border-gray-200 mt-4 bg-gray-50 relative">
               <div className="w-64 shrink-0 p-3 border-r border-gray-200 text-sm font-bold text-gray-700 flex flex-col justify-center">
                 Implementation Effort
                 <span className="text-[10px] font-normal text-gray-500">Workload Intensity</span>
               </div>
-              <div className="flex-1 relative h-16 flex items-end pb-0">
+              <div className="flex-1 relative h-16 flex items-end pb-6"> {/* Added padding bottom for numbers */}
+                 {/* Heatmap Grid Lines */}
+                 <div className="absolute inset-0 w-full h-full pointer-events-none">
+                    {Array.from({ length: Math.ceil(totalWeeks) }).map((_, i) => (
+                      <div 
+                        key={i} 
+                        className="absolute top-0 bottom-0 border-r border-gray-200"
+                        style={{ left: `${(i / totalWeeks) * 100}%` }}
+                      >
+                        {/* Week Number Label at bottom */}
+                        <div className="absolute -bottom-5 -left-2 w-4 text-center text-[9px] text-gray-400">
+                            {i + 1}
+                        </div>
+                      </div>
+                    ))}
+                 </div>
+
                  {weeklyEffort.map((load, i) => (
                    <div 
                      key={i}
-                     className="absolute bottom-0 border-r border-white transition-all duration-300 group"
+                     className="absolute bottom-6 border-r border-white transition-all duration-300 group"
                      style={{ 
-                       left: `${(i / Math.max(30, totalWeeks * 1.2)) * 100}%`, 
-                       width: `${(1 / Math.max(30, totalWeeks * 1.2)) * 100}%`,
-                       height: '100%',
+                       left: `${(i / totalWeeks) * 100}%`, 
+                       width: `${(1 / totalWeeks) * 100}%`,
+                       height: 'calc(100% - 24px)',
                        display: 'flex',
                        alignItems: 'flex-end'
                      }}
@@ -760,7 +808,8 @@ export default function GanttChart({
                    </div>
                  ))}
                  
-                 <div className="absolute top-1 right-2 flex gap-3 text-[10px] bg-white/80 p-1 rounded backdrop-blur-sm border border-gray-200">
+                 {/* Heatmap Key - Moved to Left */}
+                 <div className="absolute top-1 left-2 flex gap-3 text-[10px] bg-white/80 p-1 rounded backdrop-blur-sm border border-gray-200 z-10">
                     <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#4ade80]"></div> Low (Lengthened)</div>
                     <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#facc15]"></div> Standard</div>
                     <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#ef4444]"></div> High (Expedited)</div>
