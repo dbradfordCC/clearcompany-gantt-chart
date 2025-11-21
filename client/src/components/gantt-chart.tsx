@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Download, Calendar as CalendarIcon, RotateCcw, GripVertical } from 'lucide-react';
+import { Download, Calendar as CalendarIcon, RotateCcw } from 'lucide-react';
 import { format, addWeeks } from 'date-fns';
 import { cn } from "@/lib/utils";
 import clearCompanyLogo from '@assets/ClearCompany_Main_RGB_1752703162426.png';
@@ -198,7 +198,6 @@ export default function GanttChart({
         color: colors.primaryDark,
         isSelfPaced: false
       });
-      
       return tasks;
     }
     
@@ -212,6 +211,7 @@ export default function GanttChart({
     let rolloutTrainingDuration = Math.max(1, Math.round(moduleDuration * 0.3));
     let goLiveDuration = 1;
     
+    // Phase 1: Initiation
     tasks.push({
       id: 'kickoff',
       name: 'Project Kickoff',
@@ -236,9 +236,12 @@ export default function GanttChart({
     
     currentWeek += 2;
     
+    const moduleEndWeeks: number[] = [];
+
+    // Phase 2: Execution (Modules)
     for (let i = 0; i < modules.length; i++) {
       const moduleName = modules[i];
-      if (i > 0) currentWeek -= 1; 
+      if (i > 0) currentWeek -= 1; // Standard overlapping cascade
       
       tasks.push({
         id: `${moduleName}-implementation`,
@@ -329,31 +332,44 @@ export default function GanttChart({
       }
       
       currentWeek += moduleDuration;
+      moduleEndWeeks.push(currentWeek);
     }
+
+    // Calculate the final week where standard rollout would begin (after the last module)
+    const finalModuleEnd = Math.max(...moduleEndWeeks);
     
-    tasks.push({
-      id: 'rollout-training',
-      name: 'Rollout Training',
-      phase: 'Launch',
-      start: currentWeek,
-      duration: rolloutTrainingDuration,
-      color: colors.secondary,
-      originalDuration: rolloutTrainingDuration,
-      originalStart: currentWeek
-    });
-    
-    currentWeek += rolloutTrainingDuration;
-    
-    tasks.push({
-      id: 'golive',
-      name: 'Go Live',
-      phase: 'Launch',
-      start: currentWeek,
-      duration: goLiveDuration,
-      color: colors.secondaryAlt,
-      originalDuration: goLiveDuration,
-      originalStart: currentWeek
-    });
+    // Phase 3: Launch (Per Module, but aligned at end for standard)
+    for (let i = 0; i < modules.length; i++) {
+        const moduleName = modules[i];
+        
+        // In standard flow, everything rolls out at the end. 
+        // But we split them so they can be dragged independently later.
+        const rolloutStart = finalModuleEnd; 
+        
+        tasks.push({
+          id: `${moduleName}-rollout`,
+          name: `${moduleName} Rollout Training`,
+          phase: 'Launch',
+          start: rolloutStart,
+          duration: rolloutTrainingDuration,
+          color: colors.secondary,
+          originalDuration: rolloutTrainingDuration,
+          originalStart: rolloutStart
+        });
+
+        const goLiveStart = rolloutStart + rolloutTrainingDuration;
+
+        tasks.push({
+          id: `${moduleName}-golive`,
+          name: `${moduleName} Go Live`,
+          phase: 'Launch',
+          start: goLiveStart,
+          duration: goLiveDuration,
+          color: colors.secondaryAlt,
+          originalDuration: goLiveDuration,
+          originalStart: goLiveStart
+        });
+    }
     
     return tasks;
   }, [employeeCount, selectedProduct, tierInfo, colors]);
@@ -374,13 +390,10 @@ export default function GanttChart({
 
   const totalWeeks = useMemo(() => {
     if (tasks.length === 0) return 0;
-    // Calculate width with a small buffer, but prevent it from being too wide if tasks are short
     const maxTaskEnd = Math.max(...tasks.map(task => task.start + task.duration));
-    // Ensure minimum of 12 weeks for display, add 2 week buffer
     return Math.max(12, Math.ceil(maxTaskEnd) + 2);
   }, [tasks]);
 
-  // Current active timeline duration
   const currentDurationWeeks = useMemo(() => {
     if (tasks.length === 0) return 0;
     return Math.ceil(Math.max(...tasks.map(task => task.start + task.duration)));
@@ -408,9 +421,8 @@ export default function GanttChart({
       if (!dragState) return;
 
       const containerWidth = ganttContainerRef.current?.offsetWidth || 1000;
-      const nameColumnWidth = 256; 
+      const nameColumnWidth = 180; // Matched to print CSS width for consistency
       const chartWidth = containerWidth - nameColumnWidth;
-      // Dynamic pxPerWeek based on totalWeeks to allow scaling
       const pxPerWeek = chartWidth / totalWeeks;
 
       const deltaX = e.clientX - dragState.startX;
@@ -420,26 +432,19 @@ export default function GanttChart({
         if (t.id !== dragState.taskId) return t;
 
         if (dragState.type === 'move') {
-          // Move: Change start, maintain duration
           const rawNewStart = dragState.initialStart + deltaWeeks;
           const newStart = Math.max(0, Math.round(rawNewStart));
           return { ...t, start: newStart, isCustomized: true };
         } else if (dragState.type === 'resize-right') {
-          // Resize Right: Change duration, maintain start
           const rawNewDuration = dragState.initialDuration + deltaWeeks;
           const newDuration = Math.max(1, Math.round(rawNewDuration));
           return { ...t, duration: newDuration, isCustomized: true };
         } else {
-          // Resize Left: Change Start AND Duration to keep End fixed
           const rawNewStart = dragState.initialStart + deltaWeeks;
           const newStart = Math.max(0, Math.round(rawNewStart));
-          
-          // Max start cannot exceed original end minus 1 week (min duration 1)
           const originalEnd = dragState.initialStart + dragState.initialDuration;
           const clampedStart = Math.min(newStart, originalEnd - 1);
-          
           const newDuration = originalEnd - clampedStart;
-          
           return { ...t, start: clampedStart, duration: newDuration, isCustomized: true };
         }
       }));
@@ -460,25 +465,70 @@ export default function GanttChart({
     };
   }, [dragState, totalWeeks]);
 
-  // --- Implementation Effort Calculation ---
+  // --- Analysis Calculations ---
   
+  // 1. Implementation Effort (Visual intensity based on task duration vs original)
   const weeklyEffort = useMemo(() => {
     const effort: number[] = new Array(Math.ceil(totalWeeks)).fill(0);
     
     tasks.forEach(task => {
       if (task.isSelfPaced) return;
-
       const intensity = task.originalDuration / task.duration;
-      
       for (let w = Math.floor(task.start); w < task.start + task.duration; w++) {
-        if (w >= 0 && w < effort.length) {
-          effort[w] += intensity;
-        }
+        if (w >= 0 && w < effort.length) effort[w] += intensity;
       }
     });
-    
-    setMaxWorkload(Math.max(...effort, 1));
     return effort;
+  }, [tasks, totalWeeks]);
+
+  // 2. Client Teams Needed (Based on concurrent Implementation phases)
+  const weeklyClientTeams = useMemo(() => {
+    const teams: number[] = new Array(Math.ceil(totalWeeks)).fill(0);
+    
+    // Map of each week's active implementation tasks
+    for (let i = 0; i < teams.length; i++) {
+      // Count how many "[Name] Implementation" tasks are active this week
+      const activeImplementationTasks = tasks.filter(t => 
+        t.name.includes("Implementation") && 
+        t.start <= i && 
+        (t.start + t.duration) > i
+      ).length;
+
+      // Logic: 
+      // If count is 0, teams = 0.
+      // If count is 1, teams = 1.
+      // If count > 1:
+      //    Check if it's a standard sequential overlap (typically 1 week transition).
+      //    For this visualization, if there are multiple active implementations, 
+      //    we assume parallel streams unless it's minimal.
+      //    However, the prompt asks: "No need to increase number during overlap weeks when modules are sequential."
+      //    Sequential modules typically overlap by 1 week. 
+      //    So, if we have 2 tasks, but one is in its first week and one is in its last week?
+      //    Let's look at the *Standard* timeline. The overlap is exactly 1 week.
+      //    Heuristic: If count > 1, look at neighboring weeks. If neighbors are also > 1, it's likely parallel.
+      //    If neighbors are 1, it's likely a transition.
+      
+      if (activeImplementationTasks <= 1) {
+        teams[i] = activeImplementationTasks > 0 ? 1 : 0;
+      } else {
+         // Check if neighbors (prev/next) also have overlap.
+         // If i-1 has >1 OR i+1 has >1, then this is a sustained parallel effort.
+         // If i-1 is 1 AND i+1 is 1 (or 0), this is just a 1-week blip (standard transition).
+         
+         // Helper to get count for a specific week safely
+         const getCount = (w: number) => tasks.filter(t => 
+            t.name.includes("Implementation") && t.start <= w && (t.start + t.duration) > w
+         ).length;
+
+         const prevCount = getCount(i - 1);
+         const nextCount = getCount(i + 1);
+
+         const isTransition = (prevCount <= 1 && nextCount <= 1);
+         
+         teams[i] = isTransition ? 1 : activeImplementationTasks;
+      }
+    }
+    return teams;
   }, [tasks, totalWeeks]);
 
   const getEffortColor = (score: number) => {
@@ -503,7 +553,6 @@ export default function GanttChart({
     return phases;
   }, [tasks]);
 
-  // Status Logic
   const getTimelineStatus = () => {
     if (!isCustomMode) return "Standard Timeline";
     if (currentDurationWeeks < standardTotalWeeks) return "Customized Expedited";
@@ -520,22 +569,32 @@ export default function GanttChart({
 
   return (
     <div className="space-y-8 select-none">
-      {/* Print specific styles injected here to ensure robust printing */}
+      {/* Print Optimizations */}
       <style dangerouslySetInnerHTML={{__html: `
         @media print {
           @page { size: landscape; margin: 5mm; }
           body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .no-print { display: none !important; }
-          .gantt-container { overflow: visible !important; width: 100% !important; box-shadow: none !important; border: none !important; }
-          /* Ensure the chart fits horizontally */
-          .w-64 { width: 180px !important; } /* Shrink sidebar slightly for print */
-          .text-[10px] { font-size: 8px !important; } /* Smaller text for print */
-          /* Fix for cut-off blocks */
+          /* Logo Container Fix */
+          .logo-container { page-break-inside: avoid; margin-bottom: 10px; }
+          /* Main Chart Container Fix */
+          .gantt-container { 
+            overflow: visible !important; 
+            width: 100% !important; 
+            box-shadow: none !important; 
+            border: none !important;
+            page-break-inside: avoid;
+          }
+          .w-64 { width: 180px !important; } 
+          .text-[10px] { font-size: 8px !important; }
           .flex-1 { overflow: visible !important; }
+          /* Ensure grid lines print */
+          .border-gray-200, .border-gray-100 { border-color: #e5e7eb !important; }
         }
       `}} />
 
-      <div className="flex justify-center w-full mb-6">
+      {/* Header Logo - Wrapped for Print Safety */}
+      <div className="logo-container flex justify-center w-full mb-6">
         <img src={clearCompanyLogo} alt="ClearCompany Logo" className="h-16 object-contain" />
       </div>
 
@@ -575,7 +634,6 @@ export default function GanttChart({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-               {/* Product */}
                <div className="bg-slate-50 p-3 rounded border">
                  <Label className="text-xs text-slate-500">Product</Label>
                  <select 
@@ -587,7 +645,6 @@ export default function GanttChart({
                  </select>
                </div>
 
-               {/* Est Start Date */}
                <div className="bg-slate-50 p-3 rounded border">
                  <Label className="text-xs text-slate-500">Est. Start Date</Label>
                  <Popover>
@@ -611,7 +668,6 @@ export default function GanttChart({
                 </Popover>
                </div>
 
-               {/* Est End Date */}
                <div className="bg-slate-50 p-3 rounded border">
                  <Label className="text-xs text-slate-500">Est. End Date</Label>
                  <div className="mt-1">
@@ -722,7 +778,7 @@ export default function GanttChart({
                     ) : (
                       <div
                         className={cn(
-                          "gantt-bar absolute top-2 bottom-2 rounded shadow-sm flex items-center justify-between px-2 text-white text-xs font-medium overflow-hidden",
+                          "gantt-bar absolute top-2 bottom-2 rounded shadow-sm flex items-center justify-between px-2 text-white text-xs font-medium overflow-hidden transition-shadow",
                           dragState?.taskId === task.id ? "z-30 ring-2 ring-offset-1 ring-black" : "z-10 group-hover:z-20"
                         )}
                         style={{
@@ -735,23 +791,17 @@ export default function GanttChart({
                       >
                         <span className="truncate drop-shadow-md select-none">{task.duration}w</span>
                         
-                        {/* Left Resize Handle */}
+                        {/* Left Resize Handle (Invisible but interactive) */}
                         <div 
-                          className="absolute left-0 top-0 bottom-0 w-4 hover:bg-white/20 cursor-ew-resize flex items-center justify-center z-20"
+                          className="absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-20"
                           onMouseDown={(e) => handleMouseDown(e, task, 'resize-left')}
-                        >
-                          <div className="w-0.5 h-3 bg-white/50 rounded-full" />
-                        </div>
+                        />
 
-                        <GripVertical className="w-3 h-3 opacity-50 mx-auto absolute left-1/2 -translate-x-1/2 pointer-events-none" />
-
-                        {/* Right Resize Handle */}
+                        {/* Right Resize Handle (Invisible but interactive) */}
                         <div 
-                          className="absolute right-0 top-0 bottom-0 w-4 hover:bg-white/20 cursor-ew-resize flex items-center justify-center z-20"
+                          className="absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-20"
                           onMouseDown={(e) => handleMouseDown(e, task, 'resize-right')}
-                        >
-                          <div className="w-0.5 h-3 bg-white/50 rounded-full" />
-                        </div>
+                        />
                       </div>
                     )}
                   </div>
@@ -762,12 +812,19 @@ export default function GanttChart({
 
           {/* Implementation Effort Heatmap */}
           {tierInfo.package !== 'ClearCare Pro' && (
-            <div className="flex border-t-2 border-gray-200 mt-4 bg-gray-50 relative">
+            <div className="flex border-t-2 border-gray-200 mt-4 bg-gray-50 relative page-break-inside-avoid">
               <div className="w-64 shrink-0 p-3 border-r border-gray-200 text-sm font-bold text-gray-700 flex flex-col justify-center">
                 Implementation Effort
-                <span className="text-[10px] font-normal text-gray-500">Workload Intensity</span>
+                <span className="text-[10px] font-normal text-gray-500 mb-2">Workload Intensity</span>
+                
+                {/* Key Moved Here */}
+                <div className="flex flex-col gap-1 text-[9px] mt-1">
+                   <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#4ade80]"></div> Low (Lengthened)</div>
+                   <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#facc15]"></div> Standard</div>
+                   <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#ef4444]"></div> High (Expedited)</div>
+                </div>
               </div>
-              <div className="flex-1 relative h-16 flex items-end pb-6"> {/* Added padding bottom for numbers */}
+              <div className="flex-1 relative h-24 flex items-end pb-0">
                  {/* Heatmap Grid Lines */}
                  <div className="absolute inset-0 w-full h-full pointer-events-none">
                     {Array.from({ length: Math.ceil(totalWeeks) }).map((_, i) => (
@@ -776,10 +833,6 @@ export default function GanttChart({
                         className="absolute top-0 bottom-0 border-r border-gray-200"
                         style={{ left: `${(i / totalWeeks) * 100}%` }}
                       >
-                        {/* Week Number Label at bottom */}
-                        <div className="absolute -bottom-5 -left-2 w-4 text-center text-[9px] text-gray-400">
-                            {i + 1}
-                        </div>
                       </div>
                     ))}
                  </div>
@@ -787,11 +840,11 @@ export default function GanttChart({
                  {weeklyEffort.map((load, i) => (
                    <div 
                      key={i}
-                     className="absolute bottom-6 border-r border-white transition-all duration-300 group"
+                     className="absolute bottom-0 border-r border-white transition-all duration-300 group"
                      style={{ 
                        left: `${(i / totalWeeks) * 100}%`, 
                        width: `${(1 / totalWeeks) * 100}%`,
-                       height: 'calc(100% - 24px)',
+                       height: '100%',
                        display: 'flex',
                        alignItems: 'flex-end'
                      }}
@@ -799,7 +852,6 @@ export default function GanttChart({
                       <div 
                         className="w-full rounded-t-sm transition-all hover:brightness-90"
                         style={{ 
-                          // Scale height max to 4.0 intensity for visual
                           height: `${Math.min(100, (load / 4) * 100)}%`,
                           backgroundColor: getEffortColor(load),
                           opacity: 0.8
@@ -807,13 +859,47 @@ export default function GanttChart({
                       />
                    </div>
                  ))}
-                 
-                 {/* Heatmap Key - Moved to Left */}
-                 <div className="absolute top-1 left-2 flex gap-3 text-[10px] bg-white/80 p-1 rounded backdrop-blur-sm border border-gray-200 z-10">
-                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#4ade80]"></div> Low (Lengthened)</div>
-                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#facc15]"></div> Standard</div>
-                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#ef4444]"></div> High (Expedited)</div>
+              </div>
+            </div>
+          )}
+
+          {/* Client Teams Needed */}
+          {tierInfo.package !== 'ClearCare Pro' && (
+            <div className="flex border-t border-gray-200 bg-white relative page-break-inside-avoid">
+              <div className="w-64 shrink-0 p-3 border-r border-gray-200 text-sm font-bold text-gray-700 flex flex-col justify-center">
+                Client Team(s) Needed
+                <span className="text-[10px] font-normal text-gray-500">Concurrent Streams</span>
+              </div>
+              <div className="flex-1 relative h-12 flex items-center">
+                 {/* Grid Lines */}
+                 <div className="absolute inset-0 w-full h-full pointer-events-none">
+                    {Array.from({ length: Math.ceil(totalWeeks) }).map((_, i) => (
+                      <div 
+                        key={i} 
+                        className="absolute top-0 bottom-0 border-r border-gray-200"
+                        style={{ left: `${(i / totalWeeks) * 100}%` }}
+                      >
+                        {/* Week Number Label at bottom of entire chart */}
+                         <div className="absolute -bottom-4 -left-2 w-4 text-center text-[9px] text-gray-400">
+                            {i + 1}
+                         </div>
+                      </div>
+                    ))}
                  </div>
+
+                 {weeklyClientTeams.map((count, i) => count > 0 ? (
+                   <div 
+                     key={i}
+                     className="absolute text-xs font-bold text-gray-600 flex justify-center items-center"
+                     style={{ 
+                       left: `${(i / totalWeeks) * 100}%`, 
+                       width: `${(1 / totalWeeks) * 100}%`,
+                       height: '100%'
+                     }}
+                   >
+                     {count}
+                   </div>
+                 ) : null)}
               </div>
             </div>
           )}
