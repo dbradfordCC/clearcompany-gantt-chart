@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Download, Calendar as CalendarIcon, RotateCcw } from 'lucide-react';
+import { Download, Calendar as CalendarIcon, RotateCcw, X } from 'lucide-react';
 import { format, addWeeks } from 'date-fns';
 import { cn } from "@/lib/utils";
 import clearCompanyLogo from '@assets/ClearCompany_Main_RGB_1752703162426.png';
@@ -334,17 +334,13 @@ export default function GanttChart({
       currentWeek += moduleDuration;
       moduleEndWeeks.push(currentWeek);
     }
-
-    // Calculate the final week where standard rollout would begin (after the last module)
-    const finalModuleEnd = Math.max(...moduleEndWeeks);
     
-    // Phase 3: Launch (Per Module, but aligned at end for standard)
+    // Phase 3: Launch (Per Module)
+    // Stepping down sequentially based on when each module finishes
     for (let i = 0; i < modules.length; i++) {
         const moduleName = modules[i];
-        
-        // In standard flow, everything rolls out at the end. 
-        // But we split them so they can be dragged independently later.
-        const rolloutStart = finalModuleEnd; 
+        // Use the individual module's end week to schedule its rollout
+        const rolloutStart = moduleEndWeeks[i]; 
         
         tasks.push({
           id: `${moduleName}-rollout`,
@@ -400,6 +396,11 @@ export default function GanttChart({
   }, [tasks]);
 
   // --- Interaction Handlers ---
+
+  const deleteTask = (taskId: string) => {
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    setIsCustomMode(true);
+  };
 
   const handleMouseDown = (e: React.MouseEvent, task: Task, type: 'move' | 'resize-left' | 'resize-right') => {
     if (task.isSelfPaced) return;
@@ -467,7 +468,7 @@ export default function GanttChart({
 
   // --- Analysis Calculations ---
   
-  // 1. Implementation Effort (Visual intensity based on task duration vs original)
+  // 1. Implementation Effort
   const weeklyEffort = useMemo(() => {
     const effort: number[] = new Array(Math.ceil(totalWeeks)).fill(0);
     
@@ -481,41 +482,20 @@ export default function GanttChart({
     return effort;
   }, [tasks, totalWeeks]);
 
-  // 2. Client Teams Needed (Based on concurrent Implementation phases)
+  // 2. Client Teams Needed
   const weeklyClientTeams = useMemo(() => {
     const teams: number[] = new Array(Math.ceil(totalWeeks)).fill(0);
     
-    // Map of each week's active implementation tasks
     for (let i = 0; i < teams.length; i++) {
-      // Count how many "[Name] Implementation" tasks are active this week
       const activeImplementationTasks = tasks.filter(t => 
         t.name.includes("Implementation") && 
         t.start <= i && 
         (t.start + t.duration) > i
       ).length;
 
-      // Logic: 
-      // If count is 0, teams = 0.
-      // If count is 1, teams = 1.
-      // If count > 1:
-      //    Check if it's a standard sequential overlap (typically 1 week transition).
-      //    For this visualization, if there are multiple active implementations, 
-      //    we assume parallel streams unless it's minimal.
-      //    However, the prompt asks: "No need to increase number during overlap weeks when modules are sequential."
-      //    Sequential modules typically overlap by 1 week. 
-      //    So, if we have 2 tasks, but one is in its first week and one is in its last week?
-      //    Let's look at the *Standard* timeline. The overlap is exactly 1 week.
-      //    Heuristic: If count > 1, look at neighboring weeks. If neighbors are also > 1, it's likely parallel.
-      //    If neighbors are 1, it's likely a transition.
-      
       if (activeImplementationTasks <= 1) {
         teams[i] = activeImplementationTasks > 0 ? 1 : 0;
       } else {
-         // Check if neighbors (prev/next) also have overlap.
-         // If i-1 has >1 OR i+1 has >1, then this is a sustained parallel effort.
-         // If i-1 is 1 AND i+1 is 1 (or 0), this is just a 1-week blip (standard transition).
-         
-         // Helper to get count for a specific week safely
          const getCount = (w: number) => tasks.filter(t => 
             t.name.includes("Implementation") && t.start <= w && (t.start + t.duration) > w
          ).length;
@@ -576,7 +556,7 @@ export default function GanttChart({
           body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .no-print { display: none !important; }
           /* Logo Container Fix */
-          .logo-container { page-break-inside: avoid; margin-bottom: 10px; }
+          .logo-container { margin-bottom: 5px !important; page-break-after: avoid; }
           /* Main Chart Container Fix */
           .gantt-container { 
             overflow: visible !important; 
@@ -590,10 +570,12 @@ export default function GanttChart({
           .flex-1 { overflow: visible !important; }
           /* Ensure grid lines print */
           .border-gray-200, .border-gray-100 { border-color: #e5e7eb !important; }
+          /* Prevent text clipping in task names */
+          .task-name { white-space: normal !important; overflow: visible !important; }
         }
       `}} />
 
-      {/* Header Logo - Wrapped for Print Safety */}
+      {/* Header Logo */}
       <div className="logo-container flex justify-center w-full mb-6">
         <img src={clearCompanyLogo} alt="ClearCompany Logo" className="h-16 object-contain" />
       </div>
@@ -690,8 +672,7 @@ export default function GanttChart({
               <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800 flex items-start gap-2 animate-in fade-in">
                 <div className="mt-0.5">ℹ️</div>
                 <div>
-                  <strong>Implementation Timeline has been customized:</strong> Task blocks are snapped to whole weeks. 
-                  Check the "Implementation Effort" meter below to ensure workload remains feasible.
+                  <strong>Implementation Timeline has been customized:</strong> Check the "Implementation Effort" meter below to ensure workload remains feasible.
                 </div>
               </div>
             )}
@@ -747,7 +728,19 @@ export default function GanttChart({
               {phaseTasks.map((task) => (
                 <div key={task.id} className="flex border-b border-gray-100 hover:bg-gray-50/50 transition-colors group">
                   <div className="w-64 shrink-0 p-3 border-r border-gray-200 text-sm flex flex-col justify-center">
-                    <div className="font-medium leading-tight">{task.name}</div>
+                    <div className="flex items-start justify-between gap-2">
+                        <div className="font-medium leading-tight break-words task-name">{task.name}</div>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation(); // Prevent drag initiation
+                                deleteTask(task.id);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 text-gray-400 hover:text-red-600 rounded transition-all no-print shrink-0"
+                            title="Delete task"
+                        >
+                            <X className="w-3 h-3" />
+                        </button>
+                    </div>
                     {task.duration < task.originalDuration && (
                       <span className="text-[10px] text-orange-600 font-bold uppercase mt-1">Expedited</span>
                     )}
@@ -817,11 +810,10 @@ export default function GanttChart({
                 Implementation Effort
                 <span className="text-[10px] font-normal text-gray-500 mb-2">Workload Intensity</span>
                 
-                {/* Key Moved Here */}
                 <div className="flex flex-col gap-1 text-[9px] mt-1">
-                   <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#4ade80]"></div> Low (Lengthened)</div>
+                   <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#4ade80]"></div> Low</div>
                    <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#facc15]"></div> Standard</div>
-                   <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#ef4444]"></div> High (Expedited)</div>
+                   <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#ef4444]"></div> High</div>
                 </div>
               </div>
               <div className="flex-1 relative h-24 flex items-end pb-0">
