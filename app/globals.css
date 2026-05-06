@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* ClearCo Brand Colors */
+  --cast-iron: #37352A;
+  --platinum: #FAF8F5;
+  --copper: #FF7A52;
+  --alloy: #FFA680;
+  --bronze: #6C3A2A;
+  --verdigris: #9EB4AB;
+  --steel: #697771;
+  --pewter: #A1B4BA;
+  --white-gold: #F4EBD7;
+  --brass: #C3B497;
+
+  /* Shadcn/Radix UI tokens — mapped to ClearCo palette */
+  --background: #FAF8F5;
+  --foreground: #37352A;
+  --card: #FFFFFF;
+  --card-foreground: #37352A;
+  --popover: #FFFFFF;
+  --popover-foreground: #37352A;
+  --primary: #37352A;
+  --primary-foreground: #FAF8F5;
+  --secondary: #F4EBD7;
+  --secondary-foreground: #37352A;
+  --muted: #F4EBD7;
+  --muted-foreground: #697771;
+  --accent: #FFA680;
+  --accent-foreground: #37352A;
+  --destructive: #FF7A52;
+  --destructive-foreground: #FAF8F5;
+  --border: #C3B497;
+  --input: #C3B497;
+  --ring: #37352A;
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+/* Gantt bar base */
+.gantt-bar {
+  position: absolute;
+  user-select: none;
+}
+
+.week-grid {
+  position: relative;
+}
+
+/* Print styles — always landscape, avoid content cuts */
+@media print {
+  @page {
+    size: landscape;
+    margin: 10mm 8mm;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    background: #FAF8F5 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  /* Force the chart container to fit on print pages */
+  .gantt-container {
+    box-shadow: none !important;
+    border: 1px solid #C3B497 !important;
+    overflow: visible !important;
+    width: 100% !important;
+    page-break-inside: auto;
+  }
+
+  /* Phase headers should stay with their tasks */
+  .phase-header {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Individual task rows — avoid orphan cuts */
+  .task-row {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Keep the summary bar on one line */
+  .project-summary-bar {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Logo header — keep with chart */
+  .print-header {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Shrink task label column slightly to give bar area more room */
+  .task-label-col {
+    width: 160px !important;
+  }
+
+  .gantt-bar {
+    box-shadow: none !important;
+    transform: none !important;
+  }
+}
