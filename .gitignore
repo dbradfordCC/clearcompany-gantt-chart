@@ -84,7 +84,7 @@ dist
 
 # Gatsby files
 .cache/
-public
+# public — removed: Next.js uses /public for static assets
 
 # Vite build output
 dist
