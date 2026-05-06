@@ -2,8 +2,8 @@
 
 import { signIn } from "next-auth/react";
 import Image from "next/image";
-import { useSearchParams, Suspense } from "next/navigation";
-import { Suspense as ReactSuspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
 function LoginContent() {
   const searchParams = useSearchParams();
@@ -69,8 +69,8 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <ReactSuspense>
+    <Suspense>
       <LoginContent />
-    </ReactSuspense>
+    </Suspense>
   );
 }
