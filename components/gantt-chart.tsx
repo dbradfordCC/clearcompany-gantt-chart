@@ -432,8 +432,8 @@ export default function GanttChart({
 
   return (
     <div className="space-y-6">
-      {/* Logo — hidden on print (print-header shows instead) */}
-      <div className="flex justify-center w-full mb-4 print-header no-print">
+      {/* Logo — screen only */}
+      <div className="flex justify-center w-full mb-4 print:hidden">
         <Image
           src="/clearco-lockup.png"
           alt="ClearCo"
@@ -444,8 +444,8 @@ export default function GanttChart({
         />
       </div>
 
-      {/* Config Panel */}
-      <Card className="no-print border-[#C3B497] shadow-sm">
+      {/* Config Panel — visible on screen AND print (page 1) */}
+      <Card className="config-card border-[#C3B497] shadow-sm">
         <CardHeader className="border-b border-[#F4EBD7]">
           <div className="flex justify-between items-center">
             <CardTitle style={{ color: colors.castIron }} className="text-lg font-semibold">
@@ -453,7 +453,7 @@ export default function GanttChart({
             </CardTitle>
             <Button
               onClick={exportPDF}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 print:hidden"
               style={{ backgroundColor: colors.castIron, color: colors.platinum }}
             >
               <Download className="w-4 h-4" />
@@ -462,6 +462,12 @@ export default function GanttChart({
           </div>
         </CardHeader>
         <CardContent className="pt-5">
+          {/* Print-only logo at top of config page */}
+          <div className="hidden print:flex justify-center pb-4 mb-4 border-b border-[#C3B497]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/clearco-lockup.png" alt="ClearCo" style={{ height: 40 }} />
+          </div>
+
           <div className="space-y-6">
             {/* Company Name */}
             <div>
@@ -473,17 +479,23 @@ export default function GanttChart({
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
                 placeholder="Enter company name"
-                className="mt-1 border-[#C3B497] focus:ring-[#37352A]"
+                className="mt-1 border-[#C3B497] focus:ring-[#37352A] print:hidden"
               />
+              <p className="hidden print:block mt-1 text-sm font-semibold text-[#37352A]">
+                {companyName || "—"}
+              </p>
             </div>
 
             {/* Employee Count */}
             <div>
               <Label htmlFor="employee-count" className="text-sm font-medium text-[#37352A]">
                 Employee Count:{" "}
-                {employeeCount >= 4500 ? "4,500+" : employeeCount.toLocaleString()}
+                <span className="font-semibold">
+                  {employeeCount >= 4500 ? "4,500+" : employeeCount.toLocaleString()}
+                </span>
               </Label>
-              <div className="flex items-center gap-4 mt-2">
+              {/* Slider row — hidden in print */}
+              <div className="flex items-center gap-4 mt-2 print:hidden">
                 <Input
                   id="employee-count"
                   type="number"
@@ -501,48 +513,6 @@ export default function GanttChart({
                     step={1}
                     className="w-full"
                   />
-                </div>
-              </div>
-              {/* Tier indicator bar */}
-              <div className="mt-3 flex rounded-full overflow-hidden text-[10px] font-medium h-5">
-                <div
-                  className="flex items-center justify-center text-white px-2"
-                  style={{
-                    width: `${(249 / 4500) * 100}%`,
-                    backgroundColor: colors.steel,
-                    opacity: tierInfo.package === "ClearCare Pro" ? 1 : 0.4,
-                  }}
-                >
-                  Pro (1–249)
-                </div>
-                <div
-                  className="flex items-center justify-center text-white px-2"
-                  style={{
-                    width: `${((999 - 250) / 4500) * 100}%`,
-                    backgroundColor: colors.verdigris,
-                    opacity: tierInfo.package === "ClearCare Advanced" ? 1 : 0.4,
-                  }}
-                >
-                  Advanced (250–999)
-                </div>
-                <div
-                  className="flex items-center justify-center text-white px-2"
-                  style={{
-                    width: `${((2000 - 1000) / 4500) * 100}%`,
-                    backgroundColor: colors.brass,
-                    opacity: tierInfo.package === "ClearCare Max" ? 1 : 0.4,
-                  }}
-                >
-                  Max (1k–2k)
-                </div>
-                <div
-                  className="flex items-center justify-center text-white px-2 flex-1"
-                  style={{
-                    backgroundColor: colors.copper,
-                    opacity: tierInfo.package === "Custom" ? 1 : 0.4,
-                  }}
-                >
-                  Custom (2k+)
                 </div>
               </div>
             </div>
@@ -619,7 +589,7 @@ export default function GanttChart({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-[#FAF8F5]">
                 <div>
                   <div className="text-xs opacity-70 uppercase tracking-wide">
-                    Duration Per Module
+                    Estimated Duration Per Module
                   </div>
                   <div className="text-xl font-semibold mt-1">
                     {tierInfo.package === "ClearCare Pro"
@@ -649,7 +619,7 @@ export default function GanttChart({
         </CardContent>
       </Card>
 
-      {/* Gantt Chart */}
+      {/* Gantt Chart — starts on page 2 in print */}
       <Card
         className="gantt-container overflow-hidden border-[#C3B497] shadow-sm"
         ref={ganttContainerRef}

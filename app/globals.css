@@ -102,6 +102,19 @@
     break-inside: avoid;
   }
 
+  /* Config card prints on page 1, then always force a new page */
+  .config-card {
+    page-break-after: always !important;
+    break-after: page !important;
+    box-shadow: none !important;
+    border: 1px solid #C3B497 !important;
+  }
+
+  /* Hide interactive-only controls on the config card when printing */
+  .print-hide {
+    display: none !important;
+  }
+
   /* Logo header — keep with chart */
   .print-header {
     page-break-after: avoid;
