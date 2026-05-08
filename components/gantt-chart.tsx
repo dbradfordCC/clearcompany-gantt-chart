@@ -546,8 +546,8 @@ export default function GanttChart({
 
   return (
     <div className="space-y-6 select-none">
-      {/* Logo — no-print (print header is inside the card) */}
-      <div className="flex justify-center w-full mb-4 print-header no-print">
+      {/* Logo — screen only */}
+      <div className="flex justify-center w-full mb-4 print:hidden">
         <Image
           src="/clearco-lockup.png"
           alt="ClearCo"
@@ -558,14 +558,14 @@ export default function GanttChart({
         />
       </div>
 
-      {/* Config Panel */}
-      <Card className="no-print border-[#C3B497] shadow-sm">
+      {/* Config Panel — visible on screen AND print (page 1) */}
+      <Card className="config-card border-[#C3B497] shadow-sm">
         <CardHeader className="border-b border-[#F4EBD7]">
           <div className="flex justify-between items-center">
             <CardTitle style={{ color: colors.castIron }} className="text-lg font-semibold">
               Implementation Project Configuration
             </CardTitle>
-            <div className="flex gap-2">
+            <div className="flex gap-2 print:hidden">
               {isCustomMode && (
                 <Button
                   variant="outline"
@@ -588,22 +588,36 @@ export default function GanttChart({
         </CardHeader>
 
         <CardContent className="pt-5">
+          {/* Print-only logo at top of config page */}
+          <div className="hidden print:flex justify-center pb-4 mb-4 border-b border-[#C3B497]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/clearco-lockup.png" alt="ClearCo" style={{ height: 40 }} />
+          </div>
+
           <div className="space-y-6">
-            {/* Company + Employee */}
+            {/* Company + Employee side by side */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Company Name */}
               <div>
                 <Label className="text-sm font-medium text-[#37352A]">Company Name</Label>
                 <Input
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  className="mt-1 border-[#C3B497]"
+                  className="mt-1 border-[#C3B497] print:hidden"
                 />
+                <p className="hidden print:block mt-1 text-sm font-semibold text-[#37352A]">
+                  {companyName || "—"}
+                </p>
               </div>
+
+              {/* Employee Count */}
               <div>
                 <Label className="text-sm font-medium text-[#37352A]">
-                  Employee Count: {employeeCount.toLocaleString()}
+                  Employee Count:{" "}
+                  <span className="font-semibold">{employeeCount.toLocaleString()}</span>
                 </Label>
-                <div className="flex items-center gap-4 mt-2">
+                {/* Slider row — hidden in print */}
+                <div className="flex items-center gap-4 mt-2 print:hidden">
                   <Input
                     type="number"
                     value={employeeCount}
@@ -619,53 +633,11 @@ export default function GanttChart({
                     className="flex-1"
                   />
                 </div>
-                {/* Tier indicator bar */}
-                <div className="mt-3 flex rounded-full overflow-hidden text-[10px] font-medium h-5">
-                  <div
-                    className="flex items-center justify-center text-white px-2"
-                    style={{
-                      width: `${(249 / 4500) * 100}%`,
-                      backgroundColor: colors.steel,
-                      opacity: tierInfo.package === "ClearCare Pro" ? 1 : 0.4,
-                    }}
-                  >
-                    Pro (1–249)
-                  </div>
-                  <div
-                    className="flex items-center justify-center text-white px-2"
-                    style={{
-                      width: `${((999 - 250) / 4500) * 100}%`,
-                      backgroundColor: colors.verdigris,
-                      opacity: tierInfo.package === "ClearCare Advanced" ? 1 : 0.4,
-                    }}
-                  >
-                    Advanced (250–999)
-                  </div>
-                  <div
-                    className="flex items-center justify-center text-white px-2"
-                    style={{
-                      width: `${((2000 - 1000) / 4500) * 100}%`,
-                      backgroundColor: colors.brass,
-                      opacity: tierInfo.package === "ClearCare Max" ? 1 : 0.4,
-                    }}
-                  >
-                    Max (1k–2k)
-                  </div>
-                  <div
-                    className="flex items-center justify-center text-white px-2 flex-1"
-                    style={{
-                      backgroundColor: colors.copper,
-                      opacity: tierInfo.package === "Custom" ? 1 : 0.4,
-                    }}
-                  >
-                    Custom (2k+)
-                  </div>
-                </div>
               </div>
             </div>
 
-            {/* Tier + Product */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Customer Tier + Package */}
+            <div className="grid grid-cols-2 gap-4">
               <div className="bg-[#F4EBD7] rounded-lg p-3">
                 <div className="text-xs text-[#697771]">Customer Tier</div>
                 <div className="text-base font-semibold text-[#37352A] mt-0.5">
@@ -678,31 +650,65 @@ export default function GanttChart({
                   {tierInfo.package}
                 </div>
               </div>
-              <div className="bg-[#F4EBD7] rounded-lg p-3">
-                <div className="text-xs text-[#697771]">Product</div>
-                <select
-                  className="w-full bg-transparent font-semibold text-[#37352A] mt-0.5 outline-none text-sm"
-                  value={selectedProduct}
-                  onChange={(e) => setSelectedProduct(e.target.value)}
-                >
-                  {Object.keys(productMixes).map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </div>
             </div>
 
-            {/* Timeline Status */}
+            {/* Timeline Status (custom mode only) */}
             {timelineStatus && (
-              <div className="bg-[#F4EBD7] border border-[#C3B497] rounded-md p-3 text-sm text-[#37352A] flex items-center gap-2">
+              <div className="bg-[#F4EBD7] border border-[#C3B497] rounded-md p-3 text-sm text-[#37352A] flex items-center gap-2 print:hidden">
                 <span className={cn("font-semibold", timelineStatus.color)}>
                   {timelineStatus.label}
                 </span>
                 <span className="text-[#697771]">— drag bars to adjust, or reset to standard.</span>
               </div>
             )}
+
+            {/* Product Selection — box layout */}
+            <div>
+              <Label className="text-sm font-medium text-[#37352A]">Product Selection</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
+                {Object.keys(productMixes).map((product) => (
+                  <div
+                    key={product}
+                    className={`p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                      selectedProduct === product
+                        ? "border-[#37352A] bg-[#F4EBD7]"
+                        : "border-[#C3B497] hover:border-[#9EB4AB]"
+                    }`}
+                    onClick={() => setSelectedProduct(product)}
+                  >
+                    <div className="flex items-center">
+                      <input
+                        type="radio"
+                        name="product-selection"
+                        value={product}
+                        checked={selectedProduct === product}
+                        onChange={() => setSelectedProduct(product)}
+                        className="mr-3 accent-[#37352A]"
+                      />
+                      <span className="font-medium text-sm text-[#37352A]">{product}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Selected Modules */}
+            <div>
+              <Label className="text-sm font-medium text-[#37352A]">Selected Modules</Label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {productMixes[selectedProduct as keyof typeof productMixes]?.modules.map(
+                  (module) => (
+                    <span
+                      key={module}
+                      className="px-3 py-1 rounded-full text-sm font-medium text-[#37352A]"
+                      style={{ backgroundColor: colors.whiteGold }}
+                    >
+                      {module}
+                    </span>
+                  )
+                )}
+              </div>
+            </div>
 
             {/* Estimated Project Total — full width */}
             <div
@@ -712,7 +718,7 @@ export default function GanttChart({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-[#FAF8F5]">
                 <div>
                   <div className="text-xs opacity-70 uppercase tracking-wide">
-                    Duration Per Module
+                    Estimated Duration Per Module
                   </div>
                   <div className="text-xl font-semibold mt-1">
                     {tierInfo.package === "ClearCare Pro"
@@ -742,7 +748,7 @@ export default function GanttChart({
         </CardContent>
       </Card>
 
-      {/* Gantt Chart */}
+      {/* Gantt Chart — starts on page 2 in print */}
       <Card
         className="gantt-container overflow-hidden border-[#C3B497] shadow-sm"
         ref={ganttContainerRef}
@@ -757,17 +763,14 @@ export default function GanttChart({
           style={{ backgroundColor: colors.castIron, color: colors.platinum }}
           className="py-3"
         >
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-base font-semibold tracking-wide">
-              ClearCo Implementation Timeline — {companyName || "Company Name"}
-            </CardTitle>
-            <div className="text-sm opacity-70 font-mono">{currentDurationWeeks} weeks total</div>
-          </div>
+          <CardTitle className="text-base font-semibold tracking-wide">
+            ClearCo Implementation Timeline — {companyName || "Company Name"}
+          </CardTitle>
         </CardHeader>
 
         <CardContent className="p-0 relative">
           {/* Week header */}
-          <div className="flex border-b border-[#C3B497] bg-[#F4EBD7] sticky top-0 z-20 no-print">
+          <div className="flex border-b border-[#C3B497] bg-[#F4EBD7] sticky top-0 z-20 print:hidden">
             <div className="w-56 shrink-0 p-3 border-r border-[#C3B497] font-semibold text-xs text-[#697771]">
               Phase / Task
             </div>
@@ -812,7 +815,7 @@ export default function GanttChart({
                           e.stopPropagation();
                           deleteTask(task.id);
                         }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-[#FFF0EB] text-[#A1B4BA] hover:text-[#FF7A52] rounded transition-all no-print shrink-0"
+                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-[#FFF0EB] text-[#A1B4BA] hover:text-[#FF7A52] rounded transition-all print:hidden shrink-0"
                         title="Remove task"
                       >
                         <X className="w-3 h-3" />
@@ -884,7 +887,7 @@ export default function GanttChart({
             </div>
           ))}
 
-          {/* Client Module Teams Recommended for concurrent work */}
+          {/* Client Module Team(s) Recommended for concurrent work */}
           {tierInfo.package !== "ClearCare Pro" && (
             <div className="flex border-t border-[#C3B497] bg-white relative page-break-inside-avoid">
               <div className="w-56 shrink-0 p-3 border-r border-[#C3B497] text-sm font-bold text-[#37352A] flex flex-col justify-center task-label-col">
