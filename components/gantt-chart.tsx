@@ -97,7 +97,7 @@ export default function GanttChart({
         "Recruiting",
         "Onboarding",
         "LMS",
-        "Performance/Goals/Engagement",
+        "Performance, Goals, Engagement",
         "Compensation Management",
       ],
       moduleCount: 5,
@@ -111,7 +111,7 @@ export default function GanttChart({
     },
     ClearGrow: {
       name: "ClearGrow",
-      modules: ["LMS", "Performance/Goals/Engagement", "Compensation Management"],
+      modules: ["LMS", "Performance, Goals, Engagement", "Compensation Management"],
       moduleCount: 3,
       hasIntegration: false,
     },
@@ -186,7 +186,7 @@ export default function GanttChart({
         "Recruiting",
         "Onboarding",
         "LMS",
-        "Performance/Goals/Engagement",
+        "Performance, Goals, Engagement",
         "Compensation Management",
       ];
 
@@ -520,7 +520,7 @@ export default function GanttChart({
             {/* Customer Tier + Package */}
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-[#F4EBD7] rounded-lg p-3">
-                <div className="text-xs text-[#697771]">Customer Tier</div>
+                <div className="text-xs text-[#697771]">Customer Segment</div>
                 <div className="text-base font-semibold text-[#37352A] mt-0.5">
                   {tierInfo.customerTier}
                 </div>
@@ -651,33 +651,33 @@ export default function GanttChart({
               {phaseTasks.map((task) => (
                 <div
                   key={task.id}
-                  className="flex border-b border-[#F4EBD7] hover:bg-[#FAF8F5] task-row"
+                  className="flex border-b border-[#F4EBD7] hover:bg-[#FAF8F5] task-row items-stretch"
                 >
-                  {/* Task label */}
-                  <div className="w-56 shrink-0 p-3 border-r border-[#F4EBD7] text-sm task-label-col">
+                  {/* Task label — expands naturally with text */}
+                  <div className="w-56 shrink-0 p-3 border-r border-[#F4EBD7] text-sm task-label-col flex items-center">
                     <div className="font-medium text-[#37352A] leading-snug">{task.name}</div>
                   </div>
 
-                  {/* Bar area */}
-                  <div className="flex-1 relative" style={{ minHeight: "44px" }}>
+                  {/* Bar area — matches label height, bar centered */}
+                  <div className="flex-1 relative min-h-[44px]">
                     {task.isSelfPaced ? (
                       <div
-                        className="absolute top-2 bottom-2 left-1 right-1 rounded flex items-center justify-center text-white text-xs font-medium opacity-90"
-                        style={{ backgroundColor: task.color }}
+                        className="absolute left-1 right-1 rounded flex items-center justify-center text-white text-xs font-medium opacity-90"
+                        style={{ backgroundColor: task.color, top: "50%", transform: "translateY(-50%)", height: "28px" }}
                       >
                         Variable — Client Self-Paced
                       </div>
                     ) : (
                       <div
-                        className="gantt-bar absolute top-2 bottom-2 rounded flex items-center justify-center text-white text-xs font-medium overflow-hidden"
+                        className="gantt-bar absolute rounded flex items-center justify-center text-white text-xs font-medium overflow-hidden"
                         style={{
                           backgroundColor: task.color,
                           left: `${(task.start / Math.max(30, totalWeeks * 1.15)) * 100}%`,
-                          width: `${Math.max(
-                            2,
-                            (task.duration / Math.max(30, totalWeeks * 1.15)) * 100
-                          )}%`,
+                          width: `${Math.max(2, (task.duration / Math.max(30, totalWeeks * 1.15)) * 100)}%`,
                           minWidth: "28px",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          height: "28px",
                         }}
                       >
                         <span className="select-none px-1">
