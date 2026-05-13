@@ -662,7 +662,7 @@ export default function GanttChart({
                   <div className="flex-1 relative min-h-[44px]">
                     {task.isSelfPaced ? (
                       <div
-                        className="absolute left-1 right-1 rounded flex items-center justify-center text-white text-xs font-medium opacity-90"
+                        className="gantt-self-paced-bar absolute left-1 right-1 rounded flex items-center justify-center text-white text-xs font-medium opacity-90"
                         style={{ backgroundColor: task.color, top: "50%", transform: "translateY(-50%)", height: "28px" }}
                       >
                         Variable — Client Self-Paced
