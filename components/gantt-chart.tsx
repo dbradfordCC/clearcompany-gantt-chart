@@ -118,6 +118,9 @@ export default function GanttChart({
   // Pre-drag snapshot for undo
   const preDragSnapshot = useRef<Task[]>([]);
 
+  // Manual per-week adjustments for Client Module Teams row
+  const [teamAdjustments, setTeamAdjustments] = useState<Record<number, number>>({});
+
   const productMixes = {
     "ClearRecruit (ATS Only)": {
       name: "ClearRecruit (ATS Only)",
@@ -283,11 +286,12 @@ export default function GanttChart({
     return t.length === 0 ? 0 : Math.max(...t.map((t) => t.start + t.duration));
   }, [generateTimeline]);
 
-  // Regenerate when config changes (clear undo history)
+  // Regenerate when config changes (clear undo history + team adjustments)
   useEffect(() => {
     if (!isCustomMode) {
       setTasks(generateTimeline());
       setUndoStack([]);
+      setTeamAdjustments({});
     }
   }, [generateTimeline, isCustomMode]);
 
@@ -456,6 +460,18 @@ export default function GanttChart({
     setUndoStack((prev) => [...prev, tasks]);
     setIsCustomMode(false);
     setTasks(generateTimeline());
+    setTeamAdjustments({});
+  };
+
+  // ─── Team adjustments ─────────────────────────────────────────────────────
+  const adjustTeam = (weekIdx: number, delta: number) => {
+    setTeamAdjustments((prev) => {
+      const base = weeklyClientTeams[weekIdx] ?? 0;
+      const current = prev[weekIdx] ?? 0;
+      // Clamp so the displayed total never goes below 0
+      const next = Math.max(-base, current + delta);
+      return { ...prev, [weekIdx]: next };
+    });
   };
 
   // ─── Derived ──────────────────────────────────────────────────────────────
@@ -731,12 +747,6 @@ export default function GanttChart({
                           </button>
                         </div>
                       </div>
-                      {task.duration < task.originalDuration && (
-                        <span className="text-[10px] text-[#FF7A52] font-bold uppercase mt-0.5">Expedited</span>
-                      )}
-                      {task.duration > task.originalDuration && (
-                        <span className="text-[10px] text-[#9EB4AB] font-bold uppercase mt-0.5">Lengthened</span>
-                      )}
                     </div>
 
                     {/* Bar area — expands with label */}
@@ -750,7 +760,7 @@ export default function GanttChart({
 
                       {task.isSelfPaced ? (
                         <div
-                          className="absolute left-1 right-1 rounded flex items-center justify-center text-white text-xs font-medium opacity-80"
+                          className="gantt-self-paced-bar absolute left-1 right-1 rounded flex items-center justify-center text-white text-xs font-medium opacity-80"
                           style={{ backgroundColor: task.color, top: "50%", transform: "translateY(-50%)", height: "28px" }}
                         >
                           Variable — Client Self-Paced
@@ -840,30 +850,56 @@ export default function GanttChart({
             </div>
           ))}
 
-          {/* Client Module Teams row */}
+          {/* Client Module Teams row — with manual +/- per week */}
           {tierInfo.package !== "ClearCare Pro" && (
-            <div className="flex border-t border-[#C3B497] bg-white relative">
+            <div className="flex border-t border-[#C3B497] bg-white relative group/teams">
               <div className="w-56 shrink-0 p-3 border-r border-[#C3B497] text-sm font-bold text-[#37352A] flex flex-col justify-center task-label-col">
                 Client Module Team(s) Recommended
                 <span className="text-[10px] font-normal text-[#697771] mt-0.5">for concurrent work</span>
               </div>
-              <div className="flex-1 relative h-12 flex items-center">
+              <div className="flex-1 relative" style={{ minHeight: "56px" }}>
+                {/* Grid lines */}
                 <div className="absolute inset-0 pointer-events-none">
                   {Array.from({ length: Math.ceil(totalWeeks) }).map((_, i) => (
                     <div key={i} className="absolute top-0 bottom-0 border-r border-[#F4EBD7]" style={{ left: `${(i / totalWeeks) * 100}%` }} />
                   ))}
                 </div>
-                {weeklyClientTeams.map((count, i) =>
-                  count > 0 ? (
+                {/* Week cells */}
+                {Array.from({ length: Math.ceil(totalWeeks) }).map((_, i) => {
+                  const base = weeklyClientTeams[i] ?? 0;
+                  const adj = teamAdjustments[i] ?? 0;
+                  const display = Math.max(0, base + adj);
+                  const hasValue = display > 0;
+                  return (
                     <div
                       key={i}
-                      className="absolute text-xs font-bold text-[#37352A] flex justify-center items-center"
-                      style={{ left: `${(i / totalWeeks) * 100}%`, width: `${(1 / totalWeeks) * 100}%`, height: "100%" }}
+                      className="absolute flex flex-col items-center justify-center"
+                      style={{ left: `${(i / totalWeeks) * 100}%`, width: `${(1 / totalWeeks) * 100}%`, top: 0, bottom: 0 }}
                     >
-                      {count}
+                      {/* + button */}
+                      <button
+                        onClick={() => adjustTeam(i, 1)}
+                        className="opacity-0 group-hover/teams:opacity-100 w-full text-center text-[10px] leading-none font-bold text-[#697771] hover:text-[#37352A] transition-opacity print:hidden"
+                        title={`Add team for week ${i + 1}`}
+                      >
+                        +
+                      </button>
+                      {/* Count */}
+                      <span className={cn("text-xs font-bold text-[#37352A] leading-none py-0.5", !hasValue && "invisible")}>
+                        {hasValue ? display : "·"}
+                      </span>
+                      {/* − button */}
+                      <button
+                        onClick={() => adjustTeam(i, -1)}
+                        disabled={display <= 0}
+                        className="opacity-0 group-hover/teams:opacity-100 w-full text-center text-[10px] leading-none font-bold text-[#697771] hover:text-[#37352A] transition-opacity disabled:opacity-20 print:hidden"
+                        title={`Remove team for week ${i + 1}`}
+                      >
+                        −
+                      </button>
                     </div>
-                  ) : null
-                )}
+                  );
+                })}
               </div>
             </div>
           )}
