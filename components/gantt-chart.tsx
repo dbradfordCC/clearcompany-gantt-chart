@@ -411,6 +411,8 @@ export default function GanttChart({
     return Math.ceil(totalWeeks);
   }, [totalWeeks, tierInfo.package]);
 
+  const chartScale = useMemo(() => Math.max(30, totalWeeks * 1.15), [totalWeeks]);
+
   const tasksByPhase = useMemo(() => {
     const phases: Record<string, Task[]> = {};
     tasks.forEach((task) => {
@@ -660,10 +662,26 @@ export default function GanttChart({
 
                   {/* Bar area — matches label height, bar centered */}
                   <div className="flex-1 relative min-h-[44px]">
+                    {/* Weekly vertical grid lines */}
+                    {Array.from({ length: Math.ceil(chartScale) }, (_, i) => i + 1).map((week) => (
+                      <div
+                        key={week}
+                        className="absolute top-0 bottom-0 w-px pointer-events-none"
+                        style={{ left: `${(week / chartScale) * 100}%`, backgroundColor: "#F4EBD7" }}
+                      />
+                    ))}
+
                     {task.isSelfPaced ? (
                       <div
                         className="gantt-self-paced-bar absolute left-1 right-1 rounded flex items-center justify-center text-white text-xs font-medium opacity-90"
-                        style={{ backgroundColor: task.color, top: "50%", transform: "translateY(-50%)", height: "28px" }}
+                        style={{
+                          backgroundColor: task.color,
+                          top: 0,
+                          bottom: 0,
+                          height: "28px",
+                          marginTop: "auto",
+                          marginBottom: "auto",
+                        }}
                       >
                         Variable — Client Self-Paced
                       </div>
@@ -672,12 +690,14 @@ export default function GanttChart({
                         className="gantt-bar absolute rounded flex items-center justify-center text-white text-xs font-medium overflow-hidden"
                         style={{
                           backgroundColor: task.color,
-                          left: `${(task.start / Math.max(30, totalWeeks * 1.15)) * 100}%`,
-                          width: `${Math.max(2, (task.duration / Math.max(30, totalWeeks * 1.15)) * 100)}%`,
+                          left: `${(task.start / chartScale) * 100}%`,
+                          width: `${Math.max(2, (task.duration / chartScale) * 100)}%`,
                           minWidth: "28px",
-                          top: "50%",
-                          transform: "translateY(-50%)",
+                          top: 0,
+                          bottom: 0,
                           height: "28px",
+                          marginTop: "auto",
+                          marginBottom: "auto",
                         }}
                       >
                         <span className="select-none px-1">
