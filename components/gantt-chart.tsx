@@ -761,7 +761,14 @@ export default function GanttChart({
                       {task.isSelfPaced ? (
                         <div
                           className="gantt-self-paced-bar absolute left-1 right-1 rounded flex items-center justify-center text-white text-xs font-medium opacity-80"
-                          style={{ backgroundColor: task.color, top: "50%", transform: "translateY(-50%)", height: "28px" }}
+                          style={{
+                            backgroundColor: task.color,
+                            top: 0,
+                            bottom: 0,
+                            height: "28px",
+                            marginTop: "auto",
+                            marginBottom: "auto",
+                          }}
                         >
                           Variable — Client Self-Paced
                         </div>
@@ -775,9 +782,11 @@ export default function GanttChart({
                             backgroundColor: task.color,
                             left: `${(task.start / totalWeeks) * 100}%`,
                             width: `${Math.max(0.5, (task.duration / totalWeeks) * 100)}%`,
-                            top: "50%",
-                            transform: "translateY(-50%)",
+                            top: 0,
+                            bottom: 0,
                             height: "28px",
+                            marginTop: "auto",
+                            marginBottom: "auto",
                             cursor: "grab",
                           }}
                           onMouseDown={(e) => handleMouseDown(e, task, "move")}

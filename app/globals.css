@@ -126,18 +126,8 @@
     width: 160px !important;
   }
 
-  /* Bars: override the screen-side translateY centering with fixed top/height */
+  /* Bars use margin:auto centering — no transform overrides needed */
   .gantt-bar {
     box-shadow: none !important;
-    transform: none !important;
-    top: 8px !important;
-    height: 28px !important;
-  }
-
-  /* Self-paced bars (ClearCare Pro) — same fix */
-  .gantt-self-paced-bar {
-    transform: none !important;
-    top: 8px !important;
-    height: 28px !important;
   }
 }
